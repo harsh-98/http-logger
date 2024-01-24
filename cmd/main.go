@@ -24,6 +24,7 @@ func NewConfig() *Config {
 
 func main() {
 	cfg := NewConfig()
+	log.InitLogging("http server", 5, cfg.CommonEnvs)
 	mux := http.NewServeMux()
 	mux.HandleFunc("/add", func(w http.ResponseWriter, r *http.Request) {
 		data, err := utils.ReadJsonReader(r.Body)
@@ -34,5 +35,7 @@ func main() {
 	mux.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
 		utils.HTTPServerWriteSuccess(w, "OK")
 	})
+
 	utils.ServerFromMux(mux, cfg.Port)
+	<-make(chan int)
 }
