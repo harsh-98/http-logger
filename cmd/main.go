@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -44,7 +45,10 @@ func main() {
 	mux.HandleFunc("/add", func(w http.ResponseWriter, r *http.Request) {
 		logs := &[]Log{}
 		err := utils.ReadJsonReaderAndSetInterface(r.Body, logs)
-		log.CheckFatal(err)
+		if err != nil {
+			log.Error(err)
+			return
+		}
 		for _, entry := range *logs {
 			saveLog(entry, cfg.LogPath, cfg.AllowedMB)
 		}
@@ -63,23 +67,62 @@ func saveLog(l Log, path string, allowedMB int64) {
 
 }
 
+var MB int64 = 1024 * 1024
+
 func save(fileUri string, message string, allowedMB int64) {
+	MB = 1
 	file, err := os.OpenFile(fileUri, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	log.CheckFatal(err)
 	fi, err := file.Stat()
 	if err != nil {
-		log.Error("can't write file", err)
+		log.Error("can't read  file stats", err)
+		file.Close()
+		return
 	}
-	if fi.Size()/1024*1024 >= allowedMB {
-		mid := allowedMB * 1024 * 1024 / 2
-		file.Seek(mid, 0)
-		file.Truncate(mid)
+	if fi.Size()/MB >= allowedMB {
+		mid := allowedMB / 2
+		copyFile(file, mid, fileUri)
+		//
+		file, err = os.OpenFile(fileUri, os.O_APPEND|os.O_WRONLY, 0644)
+		if err != nil {
+			log.Error(log.WrapErrWithLine(err))
+			return
+		}
 	}
+	defer file.Close()
 	_, err = file.WriteString(message + "\n")
 	if err != nil {
 		log.Error("can't write file", err)
+		return
 	}
 }
 func getfileName(l Log) string {
-	return fmt.Sprintf("%s-%s-%s.log", l.Fly.App["name"], l.Fly.App["instance"], l.Fly.Region)
+	// l.Fly.App["instance"],
+	return fmt.Sprintf("%s-%s.log", l.Fly.App["name"], l.Fly.Region)
+}
+
+func copyFile(inFile *os.File, mid int64, fileName string) error {
+	tmpFile := "/tmp/dest.log"
+	// Offset is the number of bytes you want to exclude
+	_, err := inFile.Seek(mid, io.SeekStart)
+	if err != nil {
+		return log.WrapErrWithLine(err)
+	}
+
+	fout, err := os.Create(tmpFile)
+	if err != nil {
+		return log.WrapErrWithLine(err)
+	}
+
+	_, err = io.Copy(fout, inFile)
+	if err != nil {
+		return log.WrapErrWithLine(err)
+	}
+	fout.Close()
+	inFile.Close()
+	err = os.Rename(tmpFile, fileName)
+	if err != nil {
+		return log.WrapErrWithLine(err)
+	}
+	return nil
 }
