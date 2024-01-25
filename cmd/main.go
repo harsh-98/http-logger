@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"net/http"
 
 	"github.com/Gearbox-protocol/sdk-go/log"
@@ -27,9 +28,9 @@ func main() {
 	log.InitLogging("http server", 5, cfg.CommonEnvs)
 	mux := http.NewServeMux()
 	mux.HandleFunc("/add", func(w http.ResponseWriter, r *http.Request) {
-		data, err := utils.ReadJsonReader(r.Body)
-		log.CheckFatal(err)
-		log.Info(r.Method, utils.ToJson(data))
+		b := bytes.NewBuffer(nil)
+		b.ReadFrom(r.Body)
+		log.Info(r.Method, b.String())
 		utils.HTTPServerWriteSuccess(w, "OK")
 	})
 	mux.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
